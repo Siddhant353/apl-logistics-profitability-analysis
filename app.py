@@ -328,6 +328,70 @@ with tab_cust:
         fig.update_yaxes(autorange="reversed", type="category")
         st.plotly_chart(style_fig(fig), use_container_width=True)
 
+    # --- Customer Value Tier Segmentation ---
+    st.markdown('<div class="section-head" style="font-size:1.1rem;">'
+                'Customer Value Tiers</div>', unsafe_allow_html=True)
+    st.markdown('<div class="section-desc">Customers segmented by profit '
+                'contribution into actionable value tiers.</div>',
+                unsafe_allow_html=True)
+
+    cust_t = cust.sort_values('Profit', ascending=False).reset_index(drop=True)
+    n_c = len(cust_t)
+    top20_end = int(n_c * 0.20)
+    mid_end = int(n_c * 0.50)
+
+    def assign_tier(idx, profit):
+        if profit < 0:
+            return 'At-Risk'
+        if idx < top20_end:
+            return 'High Value'
+        if idx < mid_end:
+            return 'Medium Value'
+        return 'Low Value'
+
+    cust_t['Tier'] = [assign_tier(i, p) for i, p
+                      in zip(cust_t.index, cust_t['Profit'])]
+
+    tier_order = ['High Value', 'Medium Value', 'Low Value', 'At-Risk']
+    tier_colors = {'High Value': '#2ecc71', 'Medium Value': '#3498db',
+                   'Low Value': '#f39c12', 'At-Risk': '#e74c3c'}
+
+    tsum = cust_t.groupby('Tier').agg(
+        Customers=('Customer Id', 'count'),
+        Total_Profit=('Profit', 'sum')
+    ).reset_index()
+    total_p = cust_t['Profit'].sum()
+    tsum['Profit_Share'] = tsum['Total_Profit'] / total_p * 100
+    tsum['o'] = tsum['Tier'].map({t: i for i, t in enumerate(tier_order)})
+    tsum = tsum.sort_values('o').drop(columns='o')
+
+    tc1, tc2 = st.columns([1, 1])
+    with tc1:
+        fig = go.Figure(go.Bar(
+            x=tsum['Tier'], y=tsum['Customers'],
+            marker_color=[tier_colors[t] for t in tsum['Tier']],
+            text=tsum['Customers'], textposition='outside'
+        ))
+        fig.update_layout(title="Customers per Value Tier")
+        st.plotly_chart(style_fig(fig, height=360), use_container_width=True)
+    with tc2:
+        fig = go.Figure(go.Bar(
+            x=tsum['Tier'], y=tsum['Profit_Share'],
+            marker_color=[tier_colors[t] for t in tsum['Tier']],
+            text=[f"{v:.1f}%" for v in tsum['Profit_Share']],
+            textposition='outside'
+        ))
+        fig.add_hline(y=0, line_color="#7a8699")
+        fig.update_layout(title="Profit Contribution by Tier (%)")
+        st.plotly_chart(style_fig(fig, height=360), use_container_width=True)
+
+    st.caption(
+        "High Value = top 20% by profit · Medium = next 30% · "
+        "Low = next 30% · At-Risk = negative total profit. "
+        "The At-Risk tier shows a negative share because these customers "
+        "erode profit the other tiers must offset."
+    )
+
     insight(
         "Customer Profitability",
         f"The top 20% of customers generate {share20:.1f}% of total profit, "
